@@ -2,6 +2,7 @@ import streamlit as st
 import hashlib
 import datetime
 import json
+import os
 
 # Define the Block class
 class Block:
@@ -21,7 +22,7 @@ class Block:
         }, sort_keys=True).encode()
         return hashlib.sha256(block_string).hexdigest()
 
-# Define the Blockchain
+# Define the Blockchain class
 class LibraryBlockchain:
     def __init__(self):
         self.chain = [self.create_genesis_block()]
@@ -60,12 +61,44 @@ class LibraryBlockchain:
 
         return True
 
-# Initialize blockchain (stored in session)
+# Save blockchain to a file (JSON)
+def save_blockchain(chain, filename="blockchain_data.json"):
+    with open(filename, "w") as f:
+        json.dump([{
+            "index": b.index,
+            "data": b.data,
+            "timestamp": str(b.timestamp),
+            "previous_hash": b.previous_hash,
+            "hash": b.hash
+        } for b in chain], f, indent=4)
+
+# Load blockchain from a file (JSON)
+def load_blockchain(filename="blockchain_data.json"):
+    if not os.path.exists(filename):
+        return LibraryBlockchain()  # return genesis block if file doesn't exist
+
+    with open(filename, "r") as f:
+        data = json.load(f)
+        blockchain = LibraryBlockchain()
+        blockchain.chain = []
+        for block_data in data:
+            block = Block(
+                index=block_data['index'],
+                data=block_data['data'],
+                timestamp=block_data['timestamp'],
+                previous_hash=block_data['previous_hash']
+            )
+            block.hash = block_data['hash']  # restore hash directly
+            blockchain.chain.append(block)
+        return blockchain
+
+# Initialize blockchain (stored in session state)
 if 'blockchain' not in st.session_state:
-    st.session_state.blockchain = LibraryBlockchain()
+    st.session_state.blockchain = load_blockchain()
 
 st.title("📚 Library Book Issuing Ledger using Blockchain")
 
+# Sidebar to issue a new book
 st.sidebar.header("📘 Issue New Book")
 with st.sidebar.form("issue_form"):
     book_title = st.text_input("Book Title")
@@ -81,10 +114,12 @@ with st.sidebar.form("issue_form"):
                 'date_issued': str(date_issued)
             }
             st.session_state.blockchain.add_block(new_data)
+            save_blockchain(st.session_state.blockchain.chain)  # Save the blockchain data after adding the new block
             st.success(f"Book '{book_title}' issued to {borrower}.")
         else:
             st.error("Please fill in both the book title and borrower's name.")
 
+# Display the blockchain ledger
 st.header("📜 Blockchain Ledger")
 for block in st.session_state.blockchain.chain:
     with st.expander(f"Block {block.index}"):
@@ -95,7 +130,7 @@ for block in st.session_state.blockchain.chain:
         st.write("**Hash:**", block.hash)
         st.write("**Previous Hash:**", block.previous_hash)
 
-# Validate blockchain
+# Validate the blockchain
 st.header("🔐 Blockchain Validation")
 if st.session_state.blockchain.is_chain_valid():
     st.success("✅ Blockchain is valid.")
